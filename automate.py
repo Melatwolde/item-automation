@@ -24,9 +24,7 @@ COL_CATEGORY     = "Category"
 COL_ITEM_NAME    = "Item Name"
 COL_STATUS       = "Status"         
 COL_DESCRIPTION  = "Description"
-COL_IMAGE_PATH   = "Image Path"     # full absolute path, e.g. C:/Photos/item1.png
-
-# 
+COL_IMAGE_PATH   = "Image Path"    
 
 def select_select2(page, container_id, value_to_select):
 
@@ -47,12 +45,10 @@ def select_select2(page, container_id, value_to_select):
     search_field.clear()
     search_field.fill(value)
 
-    # Wait for and click the matching result
     result = page.locator(".select2-results__option").filter(has_text=value).first
     result.wait_for(state="visible", timeout=10000)
     result.click(timeout=15000)
 
-    # Quick confirmation
     selected = container.inner_text(timeout=5000).strip()
     print(f"  Selected '{value}' in {container_id} → confirmed: '{selected}'")
 
