@@ -6,12 +6,12 @@ from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeo
 
 
 
-BASE_URL     = "https://teter-erp.teterplc.com"
+BASE_URL     = "https://xxxxx.xx.cox"
 LOGIN_URL    = f"{BASE_URL}/login"
 CREATE_URL   = f"{BASE_URL}/items/create"
 
-EMAIL        = "admin@teterplc.com"             
-PASSWORD     = "12345678"   
+EMAIL        = "admin@gmail.com"             
+PASSWORD     = "xxxxxx"   
 EXCEL_FILE   = "items.xlsx"
 
 HEADLESS     = False                              
