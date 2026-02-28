@@ -7,6 +7,7 @@ from dotenv import load_dotenv
 from rembg import remove
 import base64
 from io import BytesIO
+import json
 
 load_dotenv()
 
@@ -17,7 +18,7 @@ OUTPUT_FOLDER = "/home/zoe/item-automation/refined_images"
 
 ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
 
-MODEL = "gemini-1.5-flash"                       
+MODEL = "gemini-flash-latest"                       
 
 client = genai.Client(api_key=API_KEY)
 
@@ -68,17 +69,18 @@ Only return valid JSON. Do not add explanations."""
             {"inline_data": {"mime_type": "image/png", "data": img_b64}}
         ]
 
-        config = genai.GenerateContentConfig(response_mime_type="application/json")
-
         response = client.models.generate_content(
             model=MODEL,
-            contents=contents,
-            config=config
+            contents=contents
         )
 
-        import json
         try:
-            result = json.loads(response.candidates[0].content.parts[0].text.strip())
+            text = response.candidates[0].content.parts[0].text.strip()
+            if text.startswith("```json"):
+                text = text[7:].strip()
+            if text.endswith("```"):
+                text = text[:-3].strip()
+            result = json.loads(text)
             product_name = result.get("product_name", "Unknown_Product")
             print(f"  Detected name: {product_name}")
 
