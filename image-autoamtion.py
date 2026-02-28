@@ -2,12 +2,12 @@ import os
 import google.genai as genai
 from PIL import Image
 from pathlib import Path
-import time
 from dotenv import load_dotenv
-from rembg import remove
+from rembg import remove, new_session
 import base64
 from io import BytesIO
 import json
+import concurrent.futures
 
 load_dotenv()
 
@@ -21,6 +21,7 @@ ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
 MODEL = "gemini-flash-latest"                       
 
 client = genai.Client(api_key=API_KEY)
+session = new_session("u2net")
 
 os.makedirs(OUTPUT_FOLDER, exist_ok=True)
 
@@ -32,41 +33,24 @@ def sanitize_filename(text: str) -> str:
     return text[:80] + ".png" 
 
 def process_image(image_path: Path):
-    print(f"\nProcessing: {image_path.name}")
-
     try:
         img = Image.open(image_path)
+        # Resize if huge to speed up upload/processing
+        if max(img.size) > 1600:
+            img.thumbnail((1600, 1600))
 
-        prompt = f"""You are a professional e-commerce product photographer.
-
-Analyze this product photo carefully.
-
-Tasks:
-1. Identify the main product in the image (be specific)
-2. Suggest a clean, professional product title / name (short, descriptive, good for listing)
-3. Generate a new version of this image with:
-   - Pure white or transparent background
-   - Professional studio lighting feel
-   - Item perfectly centered
-   - No people, no distractions, no warehouse background
-   - If it's textile/furniture/clothing, show it nicely arranged (e.g. tablecloth spread out flat and smooth)
-
-Return format (exactly this JSON structure):
-{{
-  "product_name": "short descriptive name",
-  "clean_image": <the new refined image>
-}}
-
-Only return valid JSON. Do not add explanations."""
+        prompt = """Analyze this product photo. 
+        Identify the product precisely and return a professional product name.
+        Return ONLY valid JSON: {"product_name": "..."}"""
 
         buffer = BytesIO()
-        img.save(buffer, format='PNG')
+        img.save(buffer, format='JPEG', quality=85) # JPEG is faster/smaller for upload
         img_bytes = buffer.getvalue()
         img_b64 = base64.b64encode(img_bytes).decode('utf-8')
 
         contents = [
             {"text": prompt},
-            {"inline_data": {"mime_type": "image/png", "data": img_b64}}
+            {"inline_data": {"mime_type": "image/jpeg", "data": img_b64}}
         ]
 
         response = client.models.generate_content(
@@ -82,39 +66,35 @@ Only return valid JSON. Do not add explanations."""
                 text = text[:-3].strip()
             result = json.loads(text)
             product_name = result.get("product_name", "Unknown_Product")
-            print(f"  Detected name: {product_name}")
 
-            input_img = Image.open(image_path)
-            output_img = remove(input_img)  # removes background
+            # Background removal using pre-loaded session
+            output_img = remove(img, session=session)
 
-            # Save with meaningful name
             safe_name = sanitize_filename(product_name)
             output_path = Path(OUTPUT_FOLDER) / safe_name
-
             output_img.save(output_path, "PNG")
-            print(f"  Saved refined image → {output_path.name}")
+            return f"Success: {image_path.name} -> {safe_name}"
 
-        except json.JSONDecodeError:
-            print("  Gemini did not return valid JSON. Saving fallback name.")
+        except Exception as e:
             output_path = Path(OUTPUT_FOLDER) / f"refined_{image_path.stem}.png"
-            # still save rembg version
-            Image.open(image_path).save(output_path, "PNG")  # placeholder
+            output_img = remove(img, session=session)
+            output_img.save(output_path, "PNG")
+            return f"Fallback: {image_path.name} (Logic Error: {e})"
 
     except Exception as e:
-        print(f"  Error processing {image_path.name}: {e}")
-
-
+        return f"Failed: {image_path.name} (Error: {e})"
 
 image_files = [
     p for p in Path(INPUT_FOLDER).glob("*")
     if p.is_file() and p.suffix.lower() in ALLOWED_EXTENSIONS
 ]
 
-print(f"Found {len(image_files)} images to process.")
+print(f"Found {len(image_files)} images. Processing in parallel...")
 
-for idx, img_path in enumerate(image_files, 1):
-    print(f"\n[{idx}/{len(image_files)}]")
-    process_image(img_path)
-    time.sleep(1.2)  
+with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
+    results = list(executor.map(process_image, image_files))
+
+for r in results:
+    print(r)
 
 print("\nAll images processed.")
